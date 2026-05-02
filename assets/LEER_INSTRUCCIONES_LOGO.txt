@@ -1,0 +1,9 @@
+## Instrucciones para el Logo del Equipo AdAstra
+
+Coloca en esta carpeta el archivo con el logo del equipo con el nombre exacto:
+
+    logo.png
+
+El dashboard lo detectará y mostrará automáticamente en la barra lateral (sidebar).
+
+Formatos recomendados: PNG con fondo transparente, resolución ≥ 200×200 px.
