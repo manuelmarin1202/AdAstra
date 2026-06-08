@@ -1,8 +1,9 @@
 @echo off
-title AdAstra GS — Lanzador
+title AdAstra GS v2.0 — Lanzador
 echo.
 echo  =========================================
-echo   ADASTRA GROUND STATION  v1.2.0 - PUCP
+echo   ADASTRA GROUND STATION  v2.0.0 - PUCP
+echo   Telemetria en Tiempo Real - ESP32
 echo  =========================================
 echo.
 echo  [1/2] Iniciando servidor Streamlit...
@@ -13,5 +14,6 @@ echo  [3/3] Abriendo interfaz en modo app...
 start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://localhost:8501 --start-fullscreen
 echo.
 echo  Dashboard activo en http://localhost:8501
+echo  Puerto serial: Auto-deteccion | 115200 baud
 echo  Cierra esta ventana cuando termines.
 pause
