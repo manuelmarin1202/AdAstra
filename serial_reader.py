@@ -213,10 +213,11 @@ class SerialReader:
                     # Línea no reconocida, pero la guardamos en raw
                     continue
 
-                # Calcular altitud relativa
-                if self._p_base is None:
-                    self._p_base = packet.pres  # Primera presión = ground level
-                packet.alt_rel = compute_relative_altitude(packet.pres, self._p_base)
+                # Calcular altitud relativa (solo si hay datos de presión)
+                if packet.pres is not None:
+                    if self._p_base is None:
+                        self._p_base = packet.pres  # Primera presión = ground level
+                    packet.alt_rel = compute_relative_altitude(packet.pres, self._p_base)
 
                 # Detectar pérdida de paquetes
                 if self._last_pkt_num is not None:

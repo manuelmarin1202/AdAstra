@@ -438,6 +438,11 @@ with st.sidebar:
                 "GX (°/s)": pkt.gx,
                 "GY (°/s)": pkt.gy,
                 "GZ (°/s)": pkt.gz,
+                "LAT (°)": pkt.lat,
+                "LON (°)": pkt.lon,
+                "ALT GPS (m)": pkt.alt_gps,
+                "SATS": pkt.gps_sats,
+                "SD OK": pkt.sd_ok,
                 "RSSI (dBm)": pkt.rssi,
                 "SNR (dB)": pkt.snr,
                 "Accel Total (g)": round(pkt.accel_total, 4) if pkt.accel_total else None,
@@ -522,28 +527,34 @@ def live_telemetry():
     st.markdown("#### TELEMETRÍA EN TIEMPO REAL")
 
     if latest:
-        # Calcular deltas
-        d_temp = round(latest.temp - previous.temp, 2) if previous else None
-        d_pres = round(latest.pres - previous.pres, 2) if previous else None
+        # Calcular deltas (proteger contra None en temp/pres)
+        d_temp = None
+        if previous and latest.temp is not None and previous.temp is not None:
+            d_temp = round(latest.temp - previous.temp, 2)
+        d_pres = None
+        if previous and latest.pres is not None and previous.pres is not None:
+            d_pres = round(latest.pres - previous.pres, 2)
         d_alt = round((latest.alt_rel or 0) - (previous.alt_rel or 0), 2) if previous else None
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
+            temp_display = f"{latest.temp:.2f} °C" if latest.temp is not None else "— °C"
             st.metric(
                 "TEMP — Temperatura",
-                f"{latest.temp:.2f} °C",
+                temp_display,
                 f"{d_temp:+.2f} °C" if d_temp is not None else None,
             )
             # Stats
-            temps = [p.temp for p in all_packets]
-            st.markdown(
-                f'<div class="stat-row">'
-                f'<span class="stat-badge">Min <b>{min(temps):.1f}°</b></span>'
-                f'<span class="stat-badge">Max <b>{max(temps):.1f}°</b></span>'
-                f'<span class="stat-badge">Avg <b>{sum(temps)/len(temps):.1f}°</b></span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            temps = [p.temp for p in all_packets if p.temp is not None]
+            if temps:
+                st.markdown(
+                    f'<div class="stat-row">'
+                    f'<span class="stat-badge">Min <b>{min(temps):.1f}°</b></span>'
+                    f'<span class="stat-badge">Max <b>{max(temps):.1f}°</b></span>'
+                    f'<span class="stat-badge">Avg <b>{sum(temps)/len(temps):.1f}°</b></span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
         with c2:
             alt_display = f"{latest.alt_rel:.1f} m" if latest.alt_rel is not None else "— m"
             st.metric(
@@ -562,20 +573,22 @@ def live_telemetry():
                     unsafe_allow_html=True,
                 )
         with c3:
+            pres_display = f"{latest.pres:.1f} hPa" if latest.pres is not None else "— hPa"
             st.metric(
                 "PRES — Presión",
-                f"{latest.pres:.1f} hPa",
+                pres_display,
                 f"{d_pres:+.1f} hPa" if d_pres is not None else None,
             )
-            pressures = [p.pres for p in all_packets]
-            st.markdown(
-                f'<div class="stat-row">'
-                f'<span class="stat-badge">Min <b>{min(pressures):.1f}</b></span>'
-                f'<span class="stat-badge">Max <b>{max(pressures):.1f}</b></span>'
-                f'<span class="stat-badge">Δ <b>{pressures[-1]-pressures[0]:+.2f}</b></span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            pressures = [p.pres for p in all_packets if p.pres is not None]
+            if pressures:
+                st.markdown(
+                    f'<div class="stat-row">'
+                    f'<span class="stat-badge">Min <b>{min(pressures):.1f}</b></span>'
+                    f'<span class="stat-badge">Max <b>{max(pressures):.1f}</b></span>'
+                    f'<span class="stat-badge">Δ <b>{pressures[-1]-pressures[0]:+.2f}</b></span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
         with c4:
             rssi_color = "inverse" if latest.rssi_weak else "normal"
             st.metric(
@@ -594,7 +607,7 @@ def live_telemetry():
                 unsafe_allow_html=True,
             )
 
-        # ── MÉTRICAS — Fila 2 ──
+        # ── MÉTRICAS — Fila 2: Aceleración + GPS + SD + PKT ──
         c5, c6, c7, c8 = st.columns(4)
         with c5:
             st.metric(
@@ -603,21 +616,60 @@ def live_telemetry():
                 f"AZ: {latest.az:.3f} g",
             )
             accels = [p.accel_total for p in all_packets if p.accel_total]
-            st.markdown(
-                f'<div class="stat-row">'
-                f'<span class="stat-badge">Min <b>{min(accels):.3f}g</b></span>'
-                f'<span class="stat-badge">Max <b>{max(accels):.3f}g</b></span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            if accels:
+                st.markdown(
+                    f'<div class="stat-row">'
+                    f'<span class="stat-badge">Min <b>{min(accels):.3f}g</b></span>'
+                    f'<span class="stat-badge">Max <b>{max(accels):.3f}g</b></span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
         with c6:
+            # GPS
+            if latest.has_gps_fix:
+                st.metric(
+                    "GPS — Posición",
+                    f"{latest.lat:.5f}°, {latest.lon:.5f}°",
+                    f"ALT: {latest.alt_gps}m  |  SATS: {latest.gps_sats}",
+                )
+            else:
+                st.metric(
+                    "GPS — Posición",
+                    "SIN FIX",
+                    "Esperando satélites...",
+                    delta_color="off",
+                )
+            gps_pkts = [p for p in all_packets if p.has_gps_fix]
+            if gps_pkts:
+                st.markdown(
+                    f'<div class="stat-row">'
+                    f'<span class="stat-badge">Fix <b>{len(gps_pkts)}/{len(all_packets)}</b></span>'
+                    f'<span class="stat-badge">Sats <b>{gps_pkts[-1].gps_sats or 0}</b></span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        with c7:
+            # SD Card
+            sd_label = "✅ OK" if latest.sd_ok else "❌ FAIL"
+            sd_delta_color = "normal" if latest.sd_ok else "inverse"
+            sd_fails = sum(1 for p in all_packets if not p.sd_ok)
+            st.metric(
+                "SD — Tarjeta",
+                sd_label,
+                f"Fallos: {sd_fails}/{len(all_packets)}" if sd_fails > 0 else "Sin fallos",
+                delta_color=sd_delta_color,
+            )
+        with c8:
             pps = reader.packets_per_second
             st.metric(
                 "PKT — Recibidos",
                 f"{reader.total_received}",
                 f"#{latest.pkt}  |  {pps:.2f} pkt/s",
             )
-        with c7:
+
+        # ── MÉTRICAS — Fila 3: LOSS + Uptime + Flags ──
+        c9, c10, c11, c12 = st.columns(4)
+        with c9:
             loss_pct = reader.loss_percentage
             loss_delta = f"{reader.packets_lost} ({loss_pct:.1f}%)" if reader.packets_lost > 0 else "0"
             st.metric(
@@ -626,10 +678,32 @@ def live_telemetry():
                 f"-{reader.packets_lost}" if reader.packets_lost > 0 else "Sin pérdida",
                 delta_color="inverse" if reader.packets_lost > 0 else "off",
             )
-        with c8:
+        with c10:
             uptime_str = format_duration(latest.uptime)
             flags_str = "✓ ALL OK" if latest.all_sensors_ok else f"⚠ 0x{latest.flags:X}"
             st.metric("UP — Uptime STM32", uptime_str, f"FLAGS: {flags_str}")
+        with c11:
+            # Resumen de sensores activos
+            sensor_list = []
+            if latest.bme280_active: sensor_list.append("BME")
+            if latest.mpu9250_active: sensor_list.append("MPU")
+            if latest.gps_active: sensor_list.append("GPS")
+            if latest.sd_ok: sensor_list.append("SD")
+            sensors_str = " · ".join(sensor_list) if sensor_list else "NINGUNO"
+            st.metric(
+                "HW — Subsistemas",
+                f"{len(sensor_list)}/4",
+                sensors_str,
+                delta_color="normal" if len(sensor_list) >= 3 else "inverse",
+            )
+        with c12:
+            session_dur = format_duration(reader.session_duration_s)
+            st.metric(
+                "SES — Sesión GS",
+                session_dur,
+                f"Errores serial: {reader.total_errors}",
+                delta_color="off",
+            )
 
     else:
         # Sin datos — mostrar placeholders
@@ -647,11 +721,21 @@ def live_telemetry():
         with c5:
             st.metric("ACCEL — Aceleración Total", "— g", None)
         with c6:
-            st.metric("PKT — Recibidos", "0", None)
+            st.metric("GPS — Posición", "—", None)
         with c7:
-            st.metric("LOSS — Paquetes Perdidos", "0", None)
+            st.metric("SD — Tarjeta", "—", None)
         with c8:
+            st.metric("PKT — Recibidos", "0", None)
+
+        c9, c10, c11, c12 = st.columns(4)
+        with c9:
+            st.metric("LOSS — Paquetes Perdidos", "0", None)
+        with c10:
             st.metric("UP — Uptime STM32", "—:—", "Esperando datos...")
+        with c11:
+            st.metric("HW — Subsistemas", "—", None)
+        with c12:
+            st.metric("SES — Sesión GS", "00:00", None)
 
     st.markdown("---")
 
@@ -661,19 +745,26 @@ def live_telemetry():
     if len(all_packets) >= 2:
         times = [p.uptime for p in all_packets]
 
-        # Fila 1: Altitud (con media móvil) + Temperatura
+        # Fila 1: Altitud (barométrica + GPS) + Temperatura
         g1, g2 = st.columns(2)
 
         with g1:
             st.markdown('<div class="chart-box">', unsafe_allow_html=True)
-            st.markdown('<p class="chart-title">ALT RELATIVA (m) — con media móvil 5</p>', unsafe_allow_html=True)
+            st.markdown('<p class="chart-title">ALTITUD (m) — Barométrica + GPS</p>', unsafe_allow_html=True)
             alt_raw = [p.alt_rel if p.alt_rel is not None else 0 for p in all_packets]
             alt_smooth = moving_average(alt_raw, window=5)
-            df_alt = pd.DataFrame({
-                "Raw": alt_raw,
-                "Suavizada": alt_smooth,
-            }, index=times)
-            st.line_chart(df_alt, color=["#1e3a5f", "#4d9de0"], height=180)
+            alt_gps = [p.alt_gps if p.alt_gps is not None else None for p in all_packets]
+            chart_data = {
+                "Baro Raw": alt_raw,
+                "Baro Suav": alt_smooth,
+            }
+            chart_colors = ["#1e3a5f", "#4d9de0"]
+            # Añadir GPS solo si hay al menos un dato
+            if any(a is not None for a in alt_gps):
+                chart_data["GPS"] = alt_gps
+                chart_colors.append("#3fb950")
+            df_alt = pd.DataFrame(chart_data, index=times)
+            st.line_chart(df_alt, color=chart_colors, height=180)
             last_alt = all_packets[-1].alt_rel
             st.markdown(
                 f'<p class="chart-sub">Último: {last_alt:.1f} m  |  Suav: {alt_smooth[-1]:.2f} m  |  '
@@ -688,16 +779,19 @@ def live_telemetry():
             st.markdown('<div class="chart-box">', unsafe_allow_html=True)
             st.markdown('<p class="chart-title">TEMPERATURA (°C) vs UPTIME (s)</p>', unsafe_allow_html=True)
             df_temp = pd.DataFrame({
-                "Temp (°C)": [p.temp for p in all_packets],
+                "Temp (°C)": [p.temp if p.temp is not None else None for p in all_packets],
             }, index=times)
             st.line_chart(df_temp, color=["#e3795c"], height=180)
-            temps = [p.temp for p in all_packets]
-            avg_t = sum(temps) / len(temps)
-            st.markdown(
-                f'<p class="chart-sub">Último: {temps[-1]:.2f} °C  |  '
-                f'Min: {min(temps):.2f}  |  Max: {max(temps):.2f}  |  Avg: {avg_t:.2f}</p>',
-                unsafe_allow_html=True,
-            )
+            temps = [p.temp for p in all_packets if p.temp is not None]
+            if temps:
+                avg_t = sum(temps) / len(temps)
+                st.markdown(
+                    f'<p class="chart-sub">Último: {temps[-1]:.2f} °C  |  '
+                    f'Min: {min(temps):.2f}  |  Max: {max(temps):.2f}  |  Avg: {avg_t:.2f}</p>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<p class="chart-sub">Sin datos de temperatura</p>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         # Fila 2: Presión + Aceleración
@@ -707,16 +801,19 @@ def live_telemetry():
             st.markdown('<div class="chart-box">', unsafe_allow_html=True)
             st.markdown('<p class="chart-title">PRESIÓN (hPa) vs UPTIME (s)</p>', unsafe_allow_html=True)
             df_pres = pd.DataFrame({
-                "Pres (hPa)": [p.pres for p in all_packets],
+                "Pres (hPa)": [p.pres if p.pres is not None else None for p in all_packets],
             }, index=times)
             st.line_chart(df_pres, color=["#3fb950"], height=180)
-            pres_vals = [p.pres for p in all_packets]
-            st.markdown(
-                f'<p class="chart-sub">Último: {pres_vals[-1]:.1f} hPa  |  '
-                f'Min: {min(pres_vals):.1f}  |  Max: {max(pres_vals):.1f}  |  '
-                f'Δ total: {pres_vals[-1] - pres_vals[0]:+.2f} hPa</p>',
-                unsafe_allow_html=True,
-            )
+            pres_vals = [p.pres for p in all_packets if p.pres is not None]
+            if pres_vals:
+                st.markdown(
+                    f'<p class="chart-sub">Último: {pres_vals[-1]:.1f} hPa  |  '
+                    f'Min: {min(pres_vals):.1f}  |  Max: {max(pres_vals):.1f}  |  '
+                    f'Δ total: {pres_vals[-1] - pres_vals[0]:+.2f} hPa</p>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<p class="chart-sub">Sin datos de presión</p>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         with g4:
@@ -818,7 +915,9 @@ def live_telemetry():
         for ts, line in display_lines:
             time_str = ts.strftime("%H:%M:%S")
             prefix = ""
-            if "FLAGS:0x1" in line or "FLAGS:0x0" in line:
+            if "SD:FAIL" in line or "GPS:NO_FIX" in line:
+                prefix = "⚠ "
+            elif "FLAGS:0x0" in line or "FLAGS:0x1" in line:
                 prefix = "⚠ "
             console_text += f"[{time_str}] {prefix}{line}\n"
 
